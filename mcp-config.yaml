@@ -1,24 +1,37 @@
 server:
   name: "SEPTA Transit MCP"
   description: "Real-time bus and trolley information for Philadelphia"
-  version: "1.0.1"
+  version: "1.0.2"
 
 tools:
   - name: "get_bus_locations"
     description: "Get real-time locations for all vehicles on a specific SEPTA route (bus or trolley)."
-    endpoint: "http://www3.septa.org/hackathon/TransitView/{route}"
-    method: "GET"
+    endpoints:
+      primary:
+        - url: "https://www3.septa.org/api/TransitView/index.php"
+          method: "GET"
+          format: "query_parameter"
+        - url: "http://www3.septa.org/api/TransitView/index.php"
+          method: "GET"
+          format: "query_parameter"
+      fallback:
+        - url: "http://www3.septa.org/hackathon/TransitView/{route}"
+          method: "GET"
+          format: "path_parameter"
+        - url: "https://www3.septa.org/api/TransitViewAll/index.php"
+          method: "GET"
+          format: "all_routes"
     timeout: 30
     parameters:
       route:
         type: "string"
         description: "The route number (e.g., '23', '33', '45', 'G')."
         required: true
-    notes: "Uses SEPTA's hackathon API endpoint format with route as path parameter"
+    notes: "Intelligently tries multiple endpoint variations for maximum reliability"
 
   - name: "get_bus_detours"
     description: "Check for active detours on a specific SEPTA route."
-    endpoint: "http://www3.septa.org/api/BusDetours/index.php"
+    endpoint: "https://www3.septa.org/api/BusDetours/index.php"
     method: "GET"
     timeout: 30
     parameters:
@@ -28,10 +41,12 @@ tools:
         required: true
     query_params:
       route: "{{route}}"
+    fallback: "http://www3.septa.org/api/BusDetours/index.php"
 
   - name: "get_transit_alerts"
     description: "Get general system alerts and advisories for SEPTA services."
-    endpoint: "http://www3.septa.org/api/Alerts/index.php"
+    endpoint: "https://www3.septa.org/api/Alerts/index.php"
     method: "GET"
     timeout: 30
     parameters: {}
+    fallback: "http://www3.septa.org/api/Alerts/index.php"
