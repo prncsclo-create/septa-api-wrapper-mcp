@@ -1,6 +1,18 @@
 {
   "version": 2,
+  "functions": {
+    "api/index.go": {
+      "runtime": "@vercel/go"
+    }
+  },
   "rewrites": [
-    { "source": "/api/mcp", "destination": "/api/index.go" }
+    {
+      "source": "/api/mcp",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
   ]
 }
