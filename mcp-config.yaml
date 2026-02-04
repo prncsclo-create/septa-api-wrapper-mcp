@@ -6,7 +6,7 @@ server:
 tools:
   - name: "get_bus_locations"
     description: "Get real-time locations for all vehicles on a specific SEPTA route (bus or trolley)."
-    endpoint: "https://api.septa.org/TransitView/index.php"
+    endpoint: "https://www3.septa.org/TransitView/index.php"
     method: "GET"
     parameters:
       properties:
