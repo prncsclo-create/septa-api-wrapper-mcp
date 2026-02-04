@@ -1,11 +1,10 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.go": {
-      "runtime": "go1.x"
-    }
-  },
   "rewrites": [
+    {
+      "source": "/api/mcp",
+      "destination": "/api/index.go"
+    },
     {
       "source": "/(.*)",
       "destination": "/api/index.go"
