@@ -1,25 +1,24 @@
 server:
   name: "SEPTA Transit MCP"
   description: "Real-time bus and trolley information for Philadelphia"
-  version: "1.0.0"
+  version: "1.0.1"
 
 tools:
   - name: "get_bus_locations"
     description: "Get real-time locations for all vehicles on a specific SEPTA route (bus or trolley)."
-    endpoint: "https://www3.septa.org/TransitView/index.php"
+    endpoint: "http://www3.septa.org/hackathon/TransitView/{route}"
     method: "GET"
     timeout: 30
     parameters:
       route:
         type: "string"
-        description: "The route number (e.g., '23', '45', 'G')."
+        description: "The route number (e.g., '23', '33', '45', 'G')."
         required: true
-    query_params:
-      route: "{{route}}"
+    notes: "Uses SEPTA's hackathon API endpoint format with route as path parameter"
 
   - name: "get_bus_detours"
     description: "Check for active detours on a specific SEPTA route."
-    endpoint: "https://www3.septa.org/api/BusDetours/index.php"
+    endpoint: "http://www3.septa.org/api/BusDetours/index.php"
     method: "GET"
     timeout: 30
     parameters:
@@ -32,7 +31,7 @@ tools:
 
   - name: "get_transit_alerts"
     description: "Get general system alerts and advisories for SEPTA services."
-    endpoint: "https://www3.septa.org/api/Alerts/index.php"
+    endpoint: "http://www3.septa.org/api/Alerts/index.php"
     method: "GET"
     timeout: 30
     parameters: {}
