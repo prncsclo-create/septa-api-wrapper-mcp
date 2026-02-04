@@ -1,8 +1,7 @@
-module github.com/gomcpgo/api_wrapper
+module septa-api-wrapper
 
-go 1.20
+go 1.21
 
 require (
-	github.com/gomcpgo/mcp v0.1.1
-	gopkg.in/yaml.v2 v2.4.0
+	github.com/mark3labs/mcp-go v0.8.2
 )
