@@ -1,13 +1,14 @@
 {
   "version": 2,
-  "rewrites": [
+  "functions": {
+    "api/index.go": {
+      "runtime": "go1.x"
+    }
+  },
+  "routes": [
     {
-      "source": "/api/mcp",
-      "destination": "/api/index.go"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/api/index.go"
+      "src": "/.*",
+      "dest": "/api/index.go"
     }
   ]
 }
