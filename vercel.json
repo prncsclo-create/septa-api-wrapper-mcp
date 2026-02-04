@@ -1,14 +1,9 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.go": {
-      "runtime": "go1.x"
-    }
-  },
-  "routes": [
+  "rewrites": [
     {
-      "src": "/.*",
-      "dest": "/api/index.go"
+      "source": "/(.*)",
+      "destination": "/api/index.go"
     }
   ]
 }
