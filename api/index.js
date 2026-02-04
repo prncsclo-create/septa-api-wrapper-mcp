@@ -7,35 +7,99 @@ const https = require('https');
 const http = require('http');
 
 /**
- * Make HTTP/HTTPS GET request
+ * Make HTTP/HTTPS GET request with enhanced debugging
  */
-function makeRequest(url) {
+function makeRequest(url, options = {}) {
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http;
     
+    console.log(`[DEBUG] Making request to: ${url}`);
+    
     protocol.get(url, (res) => {
       let data = '';
+      
+      console.log(`[DEBUG] Response status: ${res.statusCode}`);
+      console.log(`[DEBUG] Response headers:`, res.headers);
       
       res.on('data', (chunk) => {
         data += chunk;
       });
       
       res.on('end', () => {
+        console.log(`[DEBUG] Response body length: ${data.length}`);
+        console.log(`[DEBUG] Response body preview:`, data.substring(0, 200));
+        
         if (res.statusCode === 200) {
           try {
             const parsed = JSON.parse(data);
             resolve(parsed);
           } catch (err) {
-            reject(new Error(`Failed to parse JSON: ${err.message}`));
+            reject(new Error(`Failed to parse JSON: ${err.message}. Response: ${data.substring(0, 200)}`));
           }
         } else {
           reject(new Error(`HTTP ${res.statusCode}: ${data}`));
         }
       });
     }).on('error', (err) => {
+      console.error(`[ERROR] Request failed:`, err);
       reject(new Error(`Request failed: ${err.message}`));
     });
   });
+}
+
+/**
+ * Try multiple endpoint variations for TransitView
+ */
+async function tryTransitViewEndpoints(route) {
+  const endpoints = [
+    // Official API endpoint (HTTPS)
+    `https://www3.septa.org/api/TransitView/index.php?route=${route}`,
+    // Official API endpoint (HTTP)
+    `http://www3.septa.org/api/TransitView/index.php?route=${route}`,
+    // Hackathon endpoint (HTTP)
+    `http://www3.septa.org/hackathon/TransitView/${route}`,
+    // TransitViewAll endpoint
+    `https://www3.septa.org/api/TransitViewAll/index.php`
+  ];
+  
+  console.log(`[DEBUG] Trying ${endpoints.length} endpoint variations for route: ${route}`);
+  
+  let lastError = null;
+  
+  for (const endpoint of endpoints) {
+    try {
+      console.log(`[DEBUG] Attempting endpoint: ${endpoint}`);
+      const data = await makeRequest(endpoint);
+      
+      // If TransitViewAll, filter by route
+      if (endpoint.includes('TransitViewAll')) {
+        console.log(`[DEBUG] TransitViewAll response received, filtering for route ${route}`);
+        // TransitViewAll returns all routes, need to filter
+        if (data.routes && data.routes[route]) {
+          return data.routes[route];
+        }
+        // Try alternate structure
+        if (Array.isArray(data)) {
+          const filtered = data.filter(item => item.route === route);
+          if (filtered.length > 0) {
+            return { bus: filtered };
+          }
+        }
+      }
+      
+      // Success - return data
+      console.log(`[DEBUG] Success with endpoint: ${endpoint}`);
+      return data;
+      
+    } catch (error) {
+      console.log(`[DEBUG] Failed with endpoint ${endpoint}: ${error.message}`);
+      lastError = error;
+      // Continue to next endpoint
+    }
+  }
+  
+  // If all endpoints failed, throw the last error with context
+  throw new Error(`All TransitView endpoints failed. Last error: ${lastError?.message}. Tried ${endpoints.length} variations.`);
 }
 
 /**
@@ -90,19 +154,22 @@ async function executeTool(toolName, args) {
         throw new Error('route parameter is required');
       }
       
-      // FIXED: Use correct SEPTA TransitView API endpoint
-      // The working endpoint is: http://www3.septa.org/hackathon/TransitView/{route}
       const route = encodeURIComponent(args.route);
-      const url = `http://www3.septa.org/hackathon/TransitView/${route}`;
+      console.log(`[INFO] Getting bus locations for route: ${args.route}`);
       
-      const data = await makeRequest(url);
-      
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(data, null, 2)
-        }]
-      };
+      try {
+        const data = await tryTransitViewEndpoints(route);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(data, null, 2)
+          }]
+        };
+      } catch (error) {
+        console.error(`[ERROR] Failed to get bus locations:`, error);
+        throw error;
+      }
     }
     
     case 'get_bus_detours': {
@@ -110,32 +177,60 @@ async function executeTool(toolName, args) {
         throw new Error('route parameter is required');
       }
       
-      // Use SEPTA BusDetours API
       const route = encodeURIComponent(args.route);
-      const url = `http://www3.septa.org/api/BusDetours/index.php?route=${route}`;
+      console.log(`[INFO] Getting bus detours for route: ${args.route}`);
       
-      const data = await makeRequest(url);
-      
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(data, null, 2)
-        }]
-      };
+      // Try both HTTPS and HTTP
+      try {
+        const url = `https://www3.septa.org/api/BusDetours/index.php?route=${route}`;
+        const data = await makeRequest(url);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(data, null, 2)
+          }]
+        };
+      } catch (error) {
+        console.log(`[DEBUG] HTTPS failed, trying HTTP for BusDetours`);
+        const url = `http://www3.septa.org/api/BusDetours/index.php?route=${route}`;
+        const data = await makeRequest(url);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(data, null, 2)
+          }]
+        };
+      }
     }
     
     case 'get_transit_alerts': {
-      // Use SEPTA Alerts API
-      const url = 'http://www3.septa.org/api/Alerts/index.php';
+      console.log(`[INFO] Getting transit alerts`);
       
-      const data = await makeRequest(url);
-      
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(data, null, 2)
-        }]
-      };
+      // Try both HTTPS and HTTP
+      try {
+        const url = 'https://www3.septa.org/api/Alerts/index.php';
+        const data = await makeRequest(url);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(data, null, 2)
+          }]
+        };
+      } catch (error) {
+        console.log(`[DEBUG] HTTPS failed, trying HTTP for Alerts`);
+        const url = 'http://www3.septa.org/api/Alerts/index.php';
+        const data = await makeRequest(url);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(data, null, 2)
+          }]
+        };
+      }
     }
     
     default:
@@ -173,7 +268,7 @@ async function handleMCPRequest(body) {
             },
             serverInfo: {
               name: 'SEPTA Transit MCP',
-              version: '1.0.0'
+              version: '1.0.2'
             }
           },
           id
@@ -211,6 +306,7 @@ async function handleMCPRequest(body) {
         };
     }
   } catch (error) {
+    console.error(`[ERROR] MCP request failed:`, error);
     return {
       jsonrpc: '2.0',
       error: {
@@ -241,7 +337,7 @@ module.exports = async (req, res) => {
   if (req.method === 'GET') {
     res.status(200).json({
       name: 'SEPTA Transit MCP',
-      version: '1.0.1',
+      version: '1.0.2',
       status: 'active',
       protocol: 'MCP JSON-RPC 2.0',
       tools: Object.keys(TOOLS),
@@ -250,11 +346,21 @@ module.exports = async (req, res) => {
         mcp: 'POST /'
       },
       apiEndpoints: {
-        transitView: 'http://www3.septa.org/hackathon/TransitView/{route}',
-        busDetours: 'http://www3.septa.org/api/BusDetours/index.php',
-        alerts: 'http://www3.septa.org/api/Alerts/index.php'
+        primary: [
+          'https://www3.septa.org/api/TransitView/index.php?route={route}',
+          'http://www3.septa.org/api/TransitView/index.php?route={route}'
+        ],
+        fallback: [
+          'http://www3.septa.org/hackathon/TransitView/{route}',
+          'https://www3.septa.org/api/TransitViewAll/index.php'
+        ],
+        other: {
+          busDetours: 'https://www3.septa.org/api/BusDetours/index.php',
+          alerts: 'https://www3.septa.org/api/Alerts/index.php'
+        }
       },
-      documentation: 'https://github.com/prncsclo-create/septa-api-wrapper-mcp'
+      documentation: 'https://github.com/prncsclo-create/septa-api-wrapper-mcp',
+      note: 'Automatically tries multiple endpoint variations for maximum reliability'
     });
     return;
   }
@@ -265,6 +371,7 @@ module.exports = async (req, res) => {
       const response = await handleMCPRequest(req.body);
       res.status(200).json(response);
     } catch (error) {
+      console.error(`[ERROR] Server error:`, error);
       res.status(500).json({
         jsonrpc: '2.0',
         error: {
