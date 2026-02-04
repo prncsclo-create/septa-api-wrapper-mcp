@@ -7,7 +7,7 @@ const https = require('https');
 const http = require('http');
 
 /**
- * Make HTTP GET request
+ * Make HTTP/HTTPS GET request
  */
 function makeRequest(url) {
   return new Promise((resolve, reject) => {
@@ -50,7 +50,7 @@ const TOOLS = {
       properties: {
         route: {
           type: 'string',
-          description: 'The route number (e.g., "23", "45", "G")'
+          description: 'The route number (e.g., "23", "33", "45", "G")'
         }
       },
       required: ['route']
@@ -89,8 +89,14 @@ async function executeTool(toolName, args) {
       if (!args.route) {
         throw new Error('route parameter is required');
       }
-      const url = `https://www3.septa.org/TransitView/index.php?route=${encodeURIComponent(args.route)}`;
+      
+      // FIXED: Use correct SEPTA TransitView API endpoint
+      // The working endpoint is: http://www3.septa.org/hackathon/TransitView/{route}
+      const route = encodeURIComponent(args.route);
+      const url = `http://www3.septa.org/hackathon/TransitView/${route}`;
+      
       const data = await makeRequest(url);
+      
       return {
         content: [{
           type: 'text',
@@ -103,8 +109,13 @@ async function executeTool(toolName, args) {
       if (!args.route) {
         throw new Error('route parameter is required');
       }
-      const url = `https://www3.septa.org/api/BusDetours/index.php?route=${encodeURIComponent(args.route)}`;
+      
+      // Use SEPTA BusDetours API
+      const route = encodeURIComponent(args.route);
+      const url = `http://www3.septa.org/api/BusDetours/index.php?route=${route}`;
+      
       const data = await makeRequest(url);
+      
       return {
         content: [{
           type: 'text',
@@ -114,8 +125,11 @@ async function executeTool(toolName, args) {
     }
     
     case 'get_transit_alerts': {
-      const url = 'https://www3.septa.org/api/Alerts/index.php';
+      // Use SEPTA Alerts API
+      const url = 'http://www3.septa.org/api/Alerts/index.php';
+      
       const data = await makeRequest(url);
+      
       return {
         content: [{
           type: 'text',
@@ -227,13 +241,18 @@ module.exports = async (req, res) => {
   if (req.method === 'GET') {
     res.status(200).json({
       name: 'SEPTA Transit MCP',
-      version: '1.0.0',
+      version: '1.0.1',
       status: 'active',
       protocol: 'MCP JSON-RPC 2.0',
       tools: Object.keys(TOOLS),
       endpoints: {
         health: 'GET /',
         mcp: 'POST /'
+      },
+      apiEndpoints: {
+        transitView: 'http://www3.septa.org/hackathon/TransitView/{route}',
+        busDetours: 'http://www3.septa.org/api/BusDetours/index.php',
+        alerts: 'http://www3.septa.org/api/Alerts/index.php'
       },
       documentation: 'https://github.com/prncsclo-create/septa-api-wrapper-mcp'
     });
