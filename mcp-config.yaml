@@ -8,30 +8,31 @@ tools:
     description: "Get real-time locations for all vehicles on a specific SEPTA route (bus or trolley)."
     endpoint: "https://www3.septa.org/TransitView/index.php"
     method: "GET"
+    timeout: 30
     parameters:
-      properties:
-        route:
-          type: "string"
-          description: "The route number (e.g., '23', '45', 'G')."
-    # SEPTA uses query params: ?route=23
-    mapping:
-      query:
-        route: "{{route}}"
+      route:
+        type: "string"
+        description: "The route number (e.g., '23', '45', 'G')."
+        required: true
+    query_params:
+      route: "{{route}}"
 
   - name: "get_bus_detours"
     description: "Check for active detours on a specific SEPTA route."
-    endpoint: "https://api.septa.org/BusDetours/index.php"
+    endpoint: "https://www3.septa.org/api/BusDetours/index.php"
     method: "GET"
+    timeout: 30
     parameters:
-      properties:
-        route:
-          type: "string"
-          description: "The route number to check for detours."
-    mapping:
-      query:
-        route: "{{route}}"
+      route:
+        type: "string"
+        description: "The route number to check for detours."
+        required: true
+    query_params:
+      route: "{{route}}"
 
   - name: "get_transit_alerts"
-    description: "Get general system alerts and advisories."
-    endpoint: "https://api.septa.org/Alerts/index.php"
+    description: "Get general system alerts and advisories for SEPTA services."
+    endpoint: "https://www3.septa.org/api/Alerts/index.php"
     method: "GET"
+    timeout: 30
+    parameters: {}
