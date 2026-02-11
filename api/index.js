@@ -1,6 +1,7 @@
 /**
  * SEPTA Transit MCP Server - Node.js Implementation
  * Provides real-time bus and trolley information for Philadelphia
+ * Updated to use TransitView API as primary endpoint
  */
 
 const https = require('https');
@@ -48,58 +49,36 @@ function makeRequest(url, options = {}) {
 }
 
 /**
- * Try multiple endpoint variations for TransitView
+ * Get bus locations using SEPTA TransitView API
+ * Primary endpoint: https://www3.septa.org/api/TransitView/index.php?route=[route_number]
  */
-async function tryTransitViewEndpoints(route) {
-  const endpoints = [
-    // Official API endpoint (HTTPS)
-    `https://www3.septa.org/api/TransitView/index.php?route=${route}`,
-    // Official API endpoint (HTTP)
-    `http://www3.septa.org/api/TransitView/index.php?route=${route}`,
-    // Hackathon endpoint (HTTP)
-    `http://www3.septa.org/hackathon/TransitView/${route}`,
-    // TransitViewAll endpoint
-    `https://www3.septa.org/api/TransitViewAll/index.php`
-  ];
+async function getTransitViewData(route) {
+  // Primary TransitView API endpoint
+  const primaryUrl = `https://www3.septa.org/api/TransitView/index.php?route=${route}`;
   
-  console.log(`[DEBUG] Trying ${endpoints.length} endpoint variations for route: ${route}`);
+  console.log(`[INFO] Fetching TransitView data for route: ${route}`);
+  console.log(`[DEBUG] Using TransitView API endpoint: ${primaryUrl}`);
   
-  let lastError = null;
-  
-  for (const endpoint of endpoints) {
+  try {
+    const data = await makeRequest(primaryUrl);
+    console.log(`[DEBUG] TransitView API request successful`);
+    return data;
+  } catch (error) {
+    console.error(`[ERROR] TransitView API request failed: ${error.message}`);
+    
+    // Fallback to HTTP if HTTPS fails
+    console.log(`[DEBUG] Attempting HTTP fallback`);
+    const fallbackUrl = `http://www3.septa.org/api/TransitView/index.php?route=${route}`;
+    
     try {
-      console.log(`[DEBUG] Attempting endpoint: ${endpoint}`);
-      const data = await makeRequest(endpoint);
-      
-      // If TransitViewAll, filter by route
-      if (endpoint.includes('TransitViewAll')) {
-        console.log(`[DEBUG] TransitViewAll response received, filtering for route ${route}`);
-        // TransitViewAll returns all routes, need to filter
-        if (data.routes && data.routes[route]) {
-          return data.routes[route];
-        }
-        // Try alternate structure
-        if (Array.isArray(data)) {
-          const filtered = data.filter(item => item.route === route);
-          if (filtered.length > 0) {
-            return { bus: filtered };
-          }
-        }
-      }
-      
-      // Success - return data
-      console.log(`[DEBUG] Success with endpoint: ${endpoint}`);
+      const data = await makeRequest(fallbackUrl);
+      console.log(`[DEBUG] HTTP fallback successful`);
       return data;
-      
-    } catch (error) {
-      console.log(`[DEBUG] Failed with endpoint ${endpoint}: ${error.message}`);
-      lastError = error;
-      // Continue to next endpoint
+    } catch (fallbackError) {
+      console.error(`[ERROR] HTTP fallback also failed: ${fallbackError.message}`);
+      throw new Error(`TransitView API failed for route ${route}. HTTPS error: ${error.message}. HTTP error: ${fallbackError.message}`);
     }
   }
-  
-  // If all endpoints failed, throw the last error with context
-  throw new Error(`All TransitView endpoints failed. Last error: ${lastError?.message}. Tried ${endpoints.length} variations.`);
 }
 
 /**
@@ -108,13 +87,13 @@ async function tryTransitViewEndpoints(route) {
 const TOOLS = {
   get_bus_locations: {
     name: 'get_bus_locations',
-    description: 'Get real-time locations for all vehicles on a specific SEPTA route (bus or trolley).',
+    description: 'Get real-time locations for all vehicles on a specific SEPTA route using the TransitView API. Returns vehicle positions, directions, labels, and destinations.',
     inputSchema: {
       type: 'object',
       properties: {
         route: {
           type: 'string',
-          description: 'The route number (e.g., "23", "33", "45", "G")'
+          description: 'The route number (e.g., "23", "33", "45", "G"). Use official SEPTA route numbers.'
         }
       },
       required: ['route']
@@ -122,7 +101,7 @@ const TOOLS = {
   },
   get_bus_detours: {
     name: 'get_bus_detours',
-    description: 'Check for active detours on a specific SEPTA route.',
+    description: 'Check for active detours on a specific SEPTA route using the Bus Detours API.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -136,7 +115,7 @@ const TOOLS = {
   },
   get_transit_alerts: {
     name: 'get_transit_alerts',
-    description: 'Get general system alerts and advisories for SEPTA services.',
+    description: 'Get general system alerts and advisories for SEPTA services using the Alerts API.',
     inputSchema: {
       type: 'object',
       properties: {}
@@ -158,7 +137,7 @@ async function executeTool(toolName, args) {
       console.log(`[INFO] Getting bus locations for route: ${args.route}`);
       
       try {
-        const data = await tryTransitViewEndpoints(route);
+        const data = await getTransitViewData(route);
         
         return {
           content: [{
@@ -268,7 +247,7 @@ async function handleMCPRequest(body) {
             },
             serverInfo: {
               name: 'SEPTA Transit MCP',
-              version: '1.0.2'
+              version: '2.0.0'
             }
           },
           id
@@ -337,7 +316,7 @@ module.exports = async (req, res) => {
   if (req.method === 'GET') {
     res.status(200).json({
       name: 'SEPTA Transit MCP',
-      version: '1.0.2',
+      version: '2.0.0',
       status: 'active',
       protocol: 'MCP JSON-RPC 2.0',
       tools: Object.keys(TOOLS),
@@ -346,21 +325,12 @@ module.exports = async (req, res) => {
         mcp: 'POST /'
       },
       apiEndpoints: {
-        primary: [
-          'https://www3.septa.org/api/TransitView/index.php?route={route}',
-          'http://www3.septa.org/api/TransitView/index.php?route={route}'
-        ],
-        fallback: [
-          'http://www3.septa.org/hackathon/TransitView/{route}',
-          'https://www3.septa.org/api/TransitViewAll/index.php'
-        ],
-        other: {
-          busDetours: 'https://www3.septa.org/api/BusDetours/index.php',
-          alerts: 'https://www3.septa.org/api/Alerts/index.php'
-        }
+        transitView: 'https://www3.septa.org/api/TransitView/index.php?route={route}',
+        busDetours: 'https://www3.septa.org/api/BusDetours/index.php?route={route}',
+        alerts: 'https://www3.septa.org/api/Alerts/index.php'
       },
       documentation: 'https://github.com/prncsclo-create/septa-api-wrapper-mcp',
-      note: 'Automatically tries multiple endpoint variations for maximum reliability'
+      note: 'Uses SEPTA TransitView API as primary endpoint with HTTP fallback for reliability'
     });
     return;
   }
