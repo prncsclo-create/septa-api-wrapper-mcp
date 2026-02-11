@@ -9,7 +9,7 @@ A Model Context Protocol (MCP) server providing real-time access to SEPTA (South
 This MCP server provides three tools for accessing SEPTA transit information:
 
 ### 1. **get_bus_locations**
-Get real-time locations for all vehicles on a specific SEPTA route.
+Get real-time locations for all vehicles on a specific SEPTA route using the **TransitView API**.
 
 **Parameters:**
 - `route` (string, required): The route number (e.g., '23', '45', 'G')
@@ -20,6 +20,8 @@ Get real-time locations for all vehicles on a specific SEPTA route.
   "route": "23"
 }
 ```
+
+**API Endpoint Used:** `https://www3.septa.org/api/TransitView/index.php?route=[route_number]`
 
 ### 2. **get_bus_detours**
 Check for active detours on a specific SEPTA route.
@@ -83,7 +85,7 @@ Expected response:
 ```json
 {
   "name": "SEPTA Transit MCP",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "status": "active",
   "protocol": "MCP JSON-RPC 2.0",
   "tools": [
@@ -94,6 +96,11 @@ Expected response:
   "endpoints": {
     "health": "GET /",
     "mcp": "POST /"
+  },
+  "apiEndpoints": {
+    "transitView": "https://www3.septa.org/api/TransitView/index.php?route={route}",
+    "busDetours": "https://www3.septa.org/api/BusDetours/index.php?route={route}",
+    "alerts": "https://www3.septa.org/api/Alerts/index.php"
   }
 }
 ```
@@ -183,16 +190,46 @@ Responses include:
 
 ## API Endpoints Used
 
-This server proxies requests to the following SEPTA APIs:
+This server uses the following SEPTA APIs:
 
-- **TransitView API**: `https://www3.septa.org/TransitView/index.php`
-  - Real-time vehicle locations
-  
-- **Bus Detours API**: `https://www3.septa.org/api/BusDetours/index.php`
-  - Active detour information
-  
-- **Alerts API**: `https://www3.septa.org/api/Alerts/index.php`
-  - System-wide alerts and advisories
+### **TransitView API** (Primary)
+```
+https://www3.septa.org/api/TransitView/index.php?route=[route_number]
+```
+- **Purpose:** Real-time vehicle locations
+- **Method:** GET
+- **Parameters:** `route` (route number)
+- **Response:** JSON with bus/vehicle array containing lat, lng, label, VehicleID, direction, destination
+
+**Example Response:**
+```json
+{
+  "bus": [
+    {
+      "lat": "39.9526",
+      "lng": "-75.1652",
+      "label": "8001",
+      "VehicleID": "8001",
+      "BlockID": "3301",
+      "Direction": "NorthBound",
+      "destination": "Andorra",
+      "Offset": "0"
+    }
+  ]
+}
+```
+
+### **Bus Detours API**
+```
+https://www3.septa.org/api/BusDetours/index.php?route=[route_number]
+```
+- **Purpose:** Active detour information for specific routes
+
+### **Alerts API**
+```
+https://www3.septa.org/api/Alerts/index.php
+```
+- **Purpose:** System-wide alerts and advisories
 
 ## Error Handling
 
@@ -205,6 +242,7 @@ The server includes comprehensive error handling:
   - `-32600`: Invalid Request
   - `-32601`: Method not found
   - `-32603`: Internal error
+- Automatic HTTPS to HTTP fallback for reliability
 
 ## CORS Support
 
@@ -247,6 +285,7 @@ The server will be available at `http://localhost:3000`
 - SEPTA APIs may occasionally be unavailable
 - Some routes may not return data if no vehicles are active
 - Check SEPTA's official status page for service disruptions
+- The server automatically falls back to HTTP if HTTPS fails
 
 ### MCP Client Issues
 - Ensure requests use JSON-RPC 2.0 format
@@ -260,6 +299,22 @@ The server will be available at `http://localhost:3000`
 - **SEPTA API Latency:** Variable (typically 200-500ms)
 - **Total Request Time:** ~300-700ms
 
+## Common SEPTA Routes
+
+### Major Bus Routes
+- **Center City:** 2, 4, 7, 9, 12, 17, 21, 23, 27, 31, 32, 33, 38, 42, 44, 45, 47, 48
+- **North Philadelphia:** 50, 52, 53, 54, 56, 57, 58, 60, 61, 62
+- **West Philadelphia:** 64, 65, 66, 67, 68
+- **Northeast:** 14, 58, 67, 70, 73, 75, 77, 78, 79, 84, 88, 89, 90, 91, 92, 94, 95, 96, 97, 98, 99
+
+### Trolley Routes
+- **10** - Lancaster Avenue
+- **11** - Woodland Avenue
+- **13** - Chester Avenue
+- **34** - Baltimore Avenue
+- **36** - Eastwick
+- **G** - Girard Avenue (Green Line)
+
 ## License
 
 This project is open source and available under the MIT License.
@@ -267,6 +322,7 @@ This project is open source and available under the MIT License.
 ## Resources
 
 - [SEPTA Developer Resources](https://www.septa.org/developer/)
+- [SEPTA TransitView API Documentation](https://www3.septa.org/api/)
 - [Model Context Protocol Documentation](https://modelcontextprotocol.io/)
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
 - [Vercel Serverless Functions](https://vercel.com/docs/functions)
@@ -281,12 +337,24 @@ For issues or questions:
 
 ## Changelog
 
+### v2.0.0 (2026-02-11)
+- **Switched to TransitView API as primary endpoint**
+- Simplified endpoint strategy to focus on SEPTA's official TransitView API
+- Endpoint: `https://www3.septa.org/api/TransitView/index.php?route=[route_number]`
+- Maintained HTTP fallback for reliability
+- Removed complex multi-endpoint fallback strategy
+- Enhanced logging for TransitView API calls
+- Updated documentation to highlight TransitView API usage
+
+### v1.0.2 (2026-02-04)
+- Multi-endpoint fallback strategy
+- Comprehensive error handling
+
 ### v1.0.0 (2026-02-04)
 - Migrated from Go to Node.js for better Vercel compatibility
 - Implemented MCP JSON-RPC 2.0 protocol
 - Added all three SEPTA tools
 - Zero external dependencies
-- Comprehensive error handling
 - CORS support
 - Health check endpoint
 
