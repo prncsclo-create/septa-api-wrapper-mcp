@@ -1,11 +1,12 @@
 /**
- * SEPTA Transit MCP Server - Node.js Implementation
+ * SEPTA Transit MCP Server - Node.js Implementation with GTFS-Realtime Support
  * Provides real-time bus and trolley information for Philadelphia
- * Updated to use TransitView API as primary endpoint
+ * Version 3.0 - GTFS-RT Integration
  */
 
 const https = require('https');
 const http = require('http');
+const gtfsParser = require('./gtfs-parser');
 
 /**
  * Make HTTP/HTTPS GET request with enhanced debugging
@@ -20,7 +21,6 @@ function makeRequest(url, options = {}) {
       let data = '';
       
       console.log(`[DEBUG] Response status: ${res.statusCode}`);
-      console.log(`[DEBUG] Response headers:`, res.headers);
       
       res.on('data', (chunk) => {
         data += chunk;
@@ -28,7 +28,6 @@ function makeRequest(url, options = {}) {
       
       res.on('end', () => {
         console.log(`[DEBUG] Response body length: ${data.length}`);
-        console.log(`[DEBUG] Response body preview:`, data.substring(0, 200));
         
         if (res.statusCode === 200) {
           try {
@@ -49,11 +48,9 @@ function makeRequest(url, options = {}) {
 }
 
 /**
- * Get bus locations using SEPTA TransitView API
- * Primary endpoint: https://www3.septa.org/api/TransitView/index.php?route=[route_number]
+ * Get bus locations using SEPTA TransitView API (legacy fallback)
  */
 async function getTransitViewData(route) {
-  // Primary TransitView API endpoint
   const primaryUrl = `https://www3.septa.org/api/TransitView/index.php?route=${route}`;
   
   console.log(`[INFO] Fetching TransitView data for route: ${route}`);
@@ -82,26 +79,120 @@ async function getTransitViewData(route) {
 }
 
 /**
+ * Format GTFS-RT vehicle data to match TransitView format (for compatibility)
+ */
+function formatGTFSVehicleData(gtfsData) {
+  return {
+    route: gtfsData.routeId,
+    timestamp: new Date(gtfsData.timestamp).toISOString(),
+    vehicleCount: gtfsData.vehicleCount,
+    isLoopRoute: gtfsData.isLoopRoute,
+    dataSource: 'GTFS-Realtime',
+    vehicles: gtfsData.vehicles.map(v => ({
+      // GTFS-RT native fields
+      vehicleId: v.vehicleId,
+      label: v.label,
+      lat: v.latitude ? v.latitude.toString() : null,
+      lng: v.longitude ? v.longitude.toString() : null,
+      latitude: v.latitude,
+      longitude: v.longitude,
+      
+      // Movement data
+      bearing: v.bearing,
+      speed: v.speed,
+      
+      // Trip information
+      tripId: v.tripId,
+      routeId: v.routeId,
+      directionId: v.directionId,
+      direction: v.directionId === 0 ? 'Outbound' : 'Inbound',
+      
+      // Stop information
+      currentStopSequence: v.currentStopSequence,
+      stopId: v.stopId,
+      currentStatus: v.currentStatus,
+      
+      // Service information
+      delay: v.delay || 0,
+      congestionLevel: v.congestionLevel,
+      occupancyStatus: v.occupancyStatus,
+      
+      // Special flags
+      isLoopRoute: v.isLoopRoute,
+      
+      // Timestamp
+      timestamp: v.timestamp ? new Date(v.timestamp * 1000).toISOString() : null,
+    }))
+  };
+}
+
+/**
  * Tool definitions for MCP
  */
 const TOOLS = {
   get_bus_locations: {
     name: 'get_bus_locations',
-    description: 'Get real-time locations for all vehicles on a specific SEPTA route using the TransitView API. Returns vehicle positions, directions, labels, and destinations.',
+    description: 'Get real-time locations for all vehicles on a specific SEPTA route using GTFS-Realtime feed. Returns comprehensive vehicle data including positions, directions, speeds, delays, and trip information. Supports loop route detection and proper direction_id handling.',
     inputSchema: {
       type: 'object',
       properties: {
         route: {
           type: 'string',
-          description: 'The route number (e.g., "23", "33", "45", "G"). Use official SEPTA route numbers.'
+          description: 'The route number (e.g., "23", "33", "45", "G", "36"). Use official SEPTA route numbers.'
+        },
+        useLegacy: {
+          type: 'boolean',
+          description: 'If true, use legacy TransitView API instead of GTFS-Realtime. Default: false',
+          default: false
         }
       },
       required: ['route']
     }
   },
+  get_bus_locations_gtfs: {
+    name: 'get_bus_locations_gtfs',
+    description: 'Get real-time vehicle positions using SEPTA GTFS-Realtime feed with enhanced data including bearing, speed, delay, and direction detection. This is the recommended method for real-time tracking.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        route: {
+          type: 'string',
+          description: 'The route number to track'
+        }
+      },
+      required: ['route']
+    }
+  },
+  get_trip_updates: {
+    name: 'get_trip_updates',
+    description: 'Get real-time trip updates including delays and stop time predictions for a specific route using GTFS-Realtime feed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        route: {
+          type: 'string',
+          description: 'The route number to get trip updates for'
+        }
+      },
+      required: ['route']
+    }
+  },
+  get_service_alerts: {
+    name: 'get_service_alerts',
+    description: 'Get service alerts and advisories from GTFS-Realtime feed. Optionally filter by route.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        route: {
+          type: 'string',
+          description: 'Optional route number to filter alerts. If not provided, returns all alerts.'
+        }
+      }
+    }
+  },
   get_bus_detours: {
     name: 'get_bus_detours',
-    description: 'Check for active detours on a specific SEPTA route using the Bus Detours API.',
+    description: 'Check for active detours on a specific SEPTA route using the Bus Detours API (legacy endpoint).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -115,7 +206,15 @@ const TOOLS = {
   },
   get_transit_alerts: {
     name: 'get_transit_alerts',
-    description: 'Get general system alerts and advisories for SEPTA services using the Alerts API.',
+    description: 'Get general system alerts using the legacy Alerts API (use get_service_alerts for GTFS-RT alerts).',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  clear_gtfs_cache: {
+    name: 'clear_gtfs_cache',
+    description: 'Clear the GTFS-Realtime feed cache. Useful for testing or forcing fresh data retrieval.',
     inputSchema: {
       type: 'object',
       properties: {}
@@ -133,20 +232,126 @@ async function executeTool(toolName, args) {
         throw new Error('route parameter is required');
       }
       
-      const route = encodeURIComponent(args.route);
-      console.log(`[INFO] Getting bus locations for route: ${args.route}`);
+      const route = args.route.toString();
+      console.log(`[INFO] Getting bus locations for route: ${route}`);
+      
+      // Use GTFS-RT by default unless useLegacy is true
+      if (args.useLegacy === true) {
+        console.log(`[INFO] Using legacy TransitView API`);
+        try {
+          const data = await getTransitViewData(encodeURIComponent(route));
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify(data, null, 2)
+            }]
+          };
+        } catch (error) {
+          console.error(`[ERROR] Failed to get bus locations:`, error);
+          throw error;
+        }
+      } else {
+        console.log(`[INFO] Using GTFS-Realtime feed`);
+        try {
+          const gtfsData = await gtfsParser.getRouteData(route);
+          const formattedData = formatGTFSVehicleData(gtfsData);
+          
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify(formattedData, null, 2)
+            }]
+          };
+        } catch (error) {
+          console.error(`[ERROR] GTFS-RT failed, falling back to TransitView:`, error);
+          // Fallback to TransitView if GTFS-RT fails
+          const data = await getTransitViewData(encodeURIComponent(route));
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                ...data,
+                dataSource: 'TransitView (fallback)',
+                note: `GTFS-RT unavailable: ${error.message}`
+              }, null, 2)
+            }]
+          };
+        }
+      }
+    }
+    
+    case 'get_bus_locations_gtfs': {
+      if (!args.route) {
+        throw new Error('route parameter is required');
+      }
+      
+      const route = args.route.toString();
+      console.log(`[INFO] Getting GTFS-RT bus locations for route: ${route}`);
       
       try {
-        const data = await getTransitViewData(route);
+        const gtfsData = await gtfsParser.getRouteData(route);
+        const formattedData = formatGTFSVehicleData(gtfsData);
         
         return {
           content: [{
             type: 'text',
-            text: JSON.stringify(data, null, 2)
+            text: JSON.stringify(formattedData, null, 2)
           }]
         };
       } catch (error) {
-        console.error(`[ERROR] Failed to get bus locations:`, error);
+        console.error(`[ERROR] Failed to get GTFS-RT bus locations:`, error);
+        throw error;
+      }
+    }
+    
+    case 'get_trip_updates': {
+      if (!args.route) {
+        throw new Error('route parameter is required');
+      }
+      
+      const route = args.route.toString();
+      console.log(`[INFO] Getting trip updates for route: ${route}`);
+      
+      try {
+        const updates = await gtfsParser.getTripUpdates(route);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              route: route,
+              timestamp: new Date().toISOString(),
+              updateCount: updates.length,
+              updates: updates
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        console.error(`[ERROR] Failed to get trip updates:`, error);
+        throw error;
+      }
+    }
+    
+    case 'get_service_alerts': {
+      const route = args.route ? args.route.toString() : null;
+      console.log(`[INFO] Getting service alerts${route ? ` for route ${route}` : ''}`);
+      
+      try {
+        const alerts = await gtfsParser.getServiceAlerts(route);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              route: route || 'all',
+              timestamp: new Date().toISOString(),
+              alertCount: alerts.length,
+              alerts: alerts
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        console.error(`[ERROR] Failed to get service alerts:`, error);
         throw error;
       }
     }
@@ -185,7 +390,7 @@ async function executeTool(toolName, args) {
     }
     
     case 'get_transit_alerts': {
-      console.log(`[INFO] Getting transit alerts`);
+      console.log(`[INFO] Getting transit alerts (legacy API)`);
       
       // Try both HTTPS and HTTP
       try {
@@ -210,6 +415,22 @@ async function executeTool(toolName, args) {
           }]
         };
       }
+    }
+    
+    case 'clear_gtfs_cache': {
+      console.log(`[INFO] Clearing GTFS-RT cache`);
+      gtfsParser.clearCache();
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            message: 'GTFS-Realtime cache cleared',
+            timestamp: new Date().toISOString()
+          }, null, 2)
+        }]
+      };
     }
     
     default:
@@ -246,8 +467,8 @@ async function handleMCPRequest(body) {
               tools: {}
             },
             serverInfo: {
-              name: 'SEPTA Transit MCP',
-              version: '2.0.0'
+              name: 'SEPTA Transit MCP with GTFS-Realtime',
+              version: '3.0.0'
             }
           },
           id
@@ -315,22 +536,40 @@ module.exports = async (req, res) => {
   // Handle GET - Health check / Info
   if (req.method === 'GET') {
     res.status(200).json({
-      name: 'SEPTA Transit MCP',
-      version: '2.0.0',
+      name: 'SEPTA Transit MCP with GTFS-Realtime',
+      version: '3.0.0',
       status: 'active',
       protocol: 'MCP JSON-RPC 2.0',
       tools: Object.keys(TOOLS),
+      features: [
+        'GTFS-Realtime vehicle positions',
+        'GTFS-Realtime trip updates',
+        'GTFS-Realtime service alerts',
+        'Direction detection from bearing',
+        'Loop route handling',
+        '30-second feed caching',
+        'Legacy TransitView API fallback'
+      ],
       endpoints: {
         health: 'GET /',
         mcp: 'POST /'
       },
-      apiEndpoints: {
+      gtfsFeeds: {
+        busPositions: 'https://www3.septa.org/gtfsrt/septa-pa-us/Service/rtBusPositions.pb',
+        tripUpdates: 'https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb',
+        alerts: 'https://www3.septa.org/gtfsrt/septa-pa-us/Alerts/rtAlerts.pb'
+      },
+      legacyEndpoints: {
         transitView: 'https://www3.septa.org/api/TransitView/index.php?route={route}',
         busDetours: 'https://www3.septa.org/api/BusDetours/index.php?route={route}',
         alerts: 'https://www3.septa.org/api/Alerts/index.php'
       },
       documentation: 'https://github.com/prncsclo-create/septa-api-wrapper-mcp',
-      note: 'Uses SEPTA TransitView API as primary endpoint with HTTP fallback for reliability'
+      caching: {
+        enabled: true,
+        ttl: '30 seconds',
+        scope: 'GTFS-Realtime feeds only'
+      }
     });
     return;
   }

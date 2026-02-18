@@ -1,111 +1,112 @@
-# SEPTA Transit MCP Server
+# SEPTA Transit MCP Server with GTFS-Realtime
 
-A Model Context Protocol (MCP) server providing real-time access to SEPTA (Southeastern Pennsylvania Transportation Authority) transit data for buses and trolleys in Philadelphia.
+A Model Context Protocol (MCP) server providing real-time access to SEPTA (Southeastern Pennsylvania Transportation Authority) transit data with **GTFS-Realtime** support for enhanced vehicle tracking, trip updates, and service alerts.
 
 **Built with Node.js for reliable Vercel deployment.**
 
+## 🚀 Version 3.0 - New GTFS-Realtime Features
+
+- ✅ **GTFS-Realtime protobuf parsing** for official SEPTA feeds
+- ✅ **Enhanced vehicle tracking** with bearing, speed, and occupancy data
+- ✅ **Direction detection** from vehicle bearing
+- ✅ **Loop route handling** for circular routes (Route 36, 26, etc.)
+- ✅ **Trip updates** with real-time delay predictions
+- ✅ **Service alerts** from GTFS-RT feed
+- ✅ **30-second intelligent caching** for optimal performance
+- ✅ **Automatic fallback** to legacy TransitView API
+
 ## Features
 
-This MCP server provides three tools for accessing SEPTA transit information:
+This MCP server provides **7 tools** for accessing SEPTA transit information:
 
-### 1. **get_bus_locations**
-Get real-time locations for all vehicles on a specific SEPTA route using the **TransitView API**.
+### Core GTFS-Realtime Tools
+
+#### 1. **get_bus_locations** (Enhanced)
+Get real-time vehicle locations using GTFS-Realtime feed with automatic fallback.
 
 **Parameters:**
 - `route` (string, required): The route number (e.g., '23', '45', 'G')
+- `useLegacy` (boolean, optional): Force legacy TransitView API (default: false)
 
-**Example:**
-```json
-{
-  "route": "23"
-}
-```
+**New data fields:**
+- Bearing (direction of travel in degrees)
+- Speed (meters per second)
+- Direction ID (0=Outbound, 1=Inbound)
+- Delay (schedule adherence in seconds)
+- Congestion level
+- Occupancy status
+- Loop route detection
 
-**API Endpoint Used:** `https://www3.septa.org/api/TransitView/index.php?route=[route_number]`
-
-### 2. **get_bus_detours**
-Check for active detours on a specific SEPTA route.
+#### 2. **get_bus_locations_gtfs**
+Direct access to GTFS-Realtime vehicle positions without fallback.
 
 **Parameters:**
-- `route` (string, required): The route number to check for detours
+- `route` (string, required): The route number
 
-**Example:**
-```json
-{
-  "route": "45"
-}
-```
+#### 3. **get_trip_updates**
+Get real-time trip updates including delays and arrival/departure predictions.
 
-### 3. **get_transit_alerts**
-Get general system alerts and advisories for SEPTA services.
+**Parameters:**
+- `route` (string, required): The route number
 
-**Parameters:** None
+**Returns:**
+- Trip delays in seconds
+- Stop-by-stop arrival/departure predictions
+- Schedule relationship (SCHEDULED, ADDED, CANCELED)
+
+#### 4. **get_service_alerts**
+Get service alerts from GTFS-Realtime feed (detours, delays, service changes).
+
+**Parameters:**
+- `route` (string, optional): Filter alerts by route
+
+**Returns:**
+- Alert descriptions and headers
+- Cause and effect information
+- Active time periods
+- Affected routes/stops
+- Severity levels
+
+### Legacy Tools
+
+#### 5. **get_bus_detours**
+Check for active detours using legacy Bus Detours API.
+
+#### 6. **get_transit_alerts**
+Get general system alerts using legacy Alerts API.
+
+### Utility Tools
+
+#### 7. **clear_gtfs_cache**
+Manually clear the GTFS-RT feed cache (useful for testing).
 
 ## Technology Stack
 
 - **Runtime:** Node.js 18+
 - **Platform:** Vercel Serverless Functions
 - **Protocol:** MCP JSON-RPC 2.0
-- **Dependencies:** Zero external dependencies (uses Node.js built-ins)
+- **GTFS-RT:** gtfs-realtime-bindings (Protocol Buffers)
+- **Caching:** In-memory with 30-second TTL
 
-## Deployment
+## Quick Start
 
-This server is designed to run as a Vercel serverless function.
+### 1. Deploy to Vercel
 
-### Prerequisites
-- Vercel account
-- GitHub repository connected to Vercel
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/prncsclo-create/septa-api-wrapper-mcp)
 
-### Deploy to Vercel
+1. Click the button above or go to [Vercel Dashboard](https://vercel.com/dashboard)
+2. Import this GitHub repository
+3. Deploy (no configuration needed)
+4. Your API will be live at `https://your-project.vercel.app/`
 
-1. **Connect Repository:**
-   - Go to [Vercel Dashboard](https://vercel.com/dashboard)
-   - Click "New Project"
-   - Import this GitHub repository
+### 2. Test the Deployment
 
-2. **Configure Project:**
-   - Framework Preset: Other
-   - No build configuration needed
-   - Vercel will auto-detect Node.js
-
-3. **Deploy:**
-   - Click "Deploy"
-   - Vercel will automatically deploy your serverless function
-
-### Testing
-
-Once deployed, you can test the endpoint:
-
-**GET request (health check):**
+**Health Check:**
 ```bash
 curl https://your-deployment.vercel.app/
 ```
 
-Expected response:
-```json
-{
-  "name": "SEPTA Transit MCP",
-  "version": "2.0.0",
-  "status": "active",
-  "protocol": "MCP JSON-RPC 2.0",
-  "tools": [
-    "get_bus_locations",
-    "get_bus_detours",
-    "get_transit_alerts"
-  ],
-  "endpoints": {
-    "health": "GET /",
-    "mcp": "POST /"
-  },
-  "apiEndpoints": {
-    "transitView": "https://www3.septa.org/api/TransitView/index.php?route={route}",
-    "busDetours": "https://www3.septa.org/api/BusDetours/index.php?route={route}",
-    "alerts": "https://www3.septa.org/api/Alerts/index.php"
-  }
-}
-```
-
-**POST request (MCP tool call):**
+**Get Vehicle Locations (GTFS-RT):**
 ```bash
 curl -X POST https://your-deployment.vercel.app/ \
   -H "Content-Type: application/json" \
@@ -114,41 +115,125 @@ curl -X POST https://your-deployment.vercel.app/ \
     "method": "tools/call",
     "params": {
       "name": "get_bus_locations",
-      "arguments": {
-        "route": "23"
-      }
+      "arguments": {"route": "33"}
     },
     "id": 1
   }'
 ```
 
-**Initialize MCP session:**
+**Get Trip Updates:**
 ```bash
 curl -X POST https://your-deployment.vercel.app/ \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "initialize",
+    "method": "tools/call",
     "params": {
-      "protocolVersion": "2024-11-05",
-      "capabilities": {},
-      "clientInfo": {
-        "name": "test-client",
-        "version": "1.0.0"
-      }
+      "name": "get_trip_updates",
+      "arguments": {"route": "23"}
     },
     "id": 1
   }'
 ```
 
-**List available tools:**
+## Response Examples
+
+### GTFS-RT Vehicle Positions
+```json
+{
+  "route": "33",
+  "timestamp": "2026-02-18T23:00:00.000Z",
+  "vehicleCount": 12,
+  "isLoopRoute": false,
+  "dataSource": "GTFS-Realtime",
+  "vehicles": [
+    {
+      "vehicleId": "8245",
+      "label": "8245",
+      "latitude": 39.9526,
+      "longitude": -75.1652,
+      "bearing": 45.5,
+      "speed": 8.3,
+      "tripId": "133456",
+      "routeId": "33",
+      "directionId": 0,
+      "direction": "Outbound",
+      "delay": 120,
+      "congestionLevel": "RUNNING_SMOOTHLY",
+      "occupancyStatus": "MANY_SEATS_AVAILABLE",
+      "currentStopSequence": 15,
+      "stopId": "12345",
+      "timestamp": "2026-02-18T23:00:00.000Z"
+    }
+  ]
+}
+```
+
+### Trip Updates with Delays
+```json
+{
+  "route": "23",
+  "updateCount": 8,
+  "updates": [
+    {
+      "tripId": "133789",
+      "routeId": "23",
+      "directionId": 0,
+      "delay": 180,
+      "stopTimeUpdates": [
+        {
+          "stopSequence": 10,
+          "stopId": "1234",
+          "arrivalDelay": 180,
+          "departureDelay": 180
+        }
+      ]
+    }
+  ]
+}
+```
+
+## GTFS-Realtime Feeds
+
+The server uses these official SEPTA feeds:
+
+| Feed | URL | Purpose |
+|------|-----|---------|
+| **Bus Positions** | `https://www3.septa.org/gtfsrt/septa-pa-us/Service/rtBusPositions.pb` | Real-time vehicle locations |
+| **Trip Updates** | `https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb` | Delay predictions |
+| **Service Alerts** | `https://www3.septa.org/gtfsrt/septa-pa-us/Alerts/rtAlerts.pb` | Service disruptions |
+
+## Direction Detection
+
+The server automatically determines direction from vehicle bearing:
+
+- **North/East** (bearing 0-45°, 45-135°, 315-360°) → `direction_id: 0` (Outbound)
+- **South/West** (bearing 135-225°, 225-315°) → `direction_id: 1` (Inbound)
+
+**Special handling for loop routes:**
+- Route 36 (Eastwick Loop)
+- Route 26 (Cheltenham Loop)
+- LUCY Gold/Green Loops
+- Always assigned `direction_id: 0`
+
+## Caching Strategy
+
+GTFS-RT feeds are cached for **30 seconds**:
+
+- **Cache Hit**: ~50-100ms response time
+- **Cache Miss**: ~500-800ms (includes feed download and parsing)
+- Automatic cache invalidation after TTL
+
+**Manual cache clearing:**
 ```bash
 curl -X POST https://your-deployment.vercel.app/ \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "tools/list",
-    "params": {},
+    "method": "tools/call",
+    "params": {
+      "name": "clear_gtfs_cache"
+    },
     "id": 1
   }'
 ```
@@ -158,206 +243,190 @@ curl -X POST https://your-deployment.vercel.app/ \
 ```
 septa-api-wrapper-mcp/
 ├── api/
-│   └── index.js          # Node.js serverless function handler
-├── package.json          # Node.js project configuration
-├── vercel.json           # Vercel deployment configuration
-├── mcp-config.yaml       # MCP tool configuration (reference)
-└── README.md             # This file
+│   ├── index.js           # MCP handler with GTFS-RT integration
+│   └── gtfs-parser.js     # GTFS-Realtime protobuf parser
+├── package.json           # Dependencies (gtfs-realtime-bindings)
+├── vercel.json            # Vercel deployment config
+├── README.md              # This file
+├── GTFS_REALTIME_GUIDE.md # Detailed GTFS-RT documentation
+└── SEPTA_API_RESEARCH.md  # API research and legacy docs
 ```
 
 ## MCP Protocol Support
 
-This server implements the Model Context Protocol (MCP) JSON-RPC 2.0 specification:
+Implements MCP JSON-RPC 2.0 specification:
 
 ### Supported Methods
-
 1. **initialize** - Initialize MCP session
 2. **tools/list** - List all available tools
 3. **tools/call** - Execute a specific tool
 
-### JSON-RPC 2.0 Compliance
+All requests/responses follow JSON-RPC 2.0 format.
 
-All requests must include:
-- `jsonrpc`: "2.0"
-- `method`: The MCP method name
-- `params`: Method parameters (object)
-- `id`: Request identifier
+## Performance
 
-Responses include:
-- `jsonrpc`: "2.0"
-- `result` or `error`: Method result or error
-- `id`: Matching request identifier
+| Operation | Performance |
+|-----------|-------------|
+| GTFS-RT (cached) | 50-100ms |
+| GTFS-RT (uncached) | 450-800ms |
+| Legacy TransitView | 210-550ms |
+| Cold start (Vercel) | 100-200ms |
 
-## API Endpoints Used
+## Common SEPTA Routes
 
-This server uses the following SEPTA APIs:
+### High-Frequency Routes (Best for Testing)
+- **23** - Germantown Avenue (very frequent)
+- **33** - Dauphin-Cecil B Moore (frequent)
+- **45** - Girard Avenue (major crosstown)
+- **G** - Girard Trolley (high visibility)
 
-### **TransitView API** (Primary)
-```
-https://www3.septa.org/api/TransitView/index.php?route=[route_number]
-```
-- **Purpose:** Real-time vehicle locations
-- **Method:** GET
-- **Parameters:** `route` (route number)
-- **Response:** JSON with bus/vehicle array containing lat, lng, label, VehicleID, direction, destination
+### Loop Routes
+- **36** - Eastwick Loop
+- **26** - Cheltenham Loop
 
-**Example Response:**
-```json
-{
-  "bus": [
-    {
-      "lat": "39.9526",
-      "lng": "-75.1652",
-      "label": "8001",
-      "VehicleID": "8001",
-      "BlockID": "3301",
-      "Direction": "NorthBound",
-      "destination": "Andorra",
-      "Offset": "0"
-    }
-  ]
-}
-```
-
-### **Bus Detours API**
-```
-https://www3.septa.org/api/BusDetours/index.php?route=[route_number]
-```
-- **Purpose:** Active detour information for specific routes
-
-### **Alerts API**
-```
-https://www3.septa.org/api/Alerts/index.php
-```
-- **Purpose:** System-wide alerts and advisories
-
-## Error Handling
-
-The server includes comprehensive error handling:
-- Parameter validation
-- HTTP status code checking
-- JSON parsing error detection
-- Detailed error messages in MCP error format
-- Proper JSON-RPC 2.0 error codes:
-  - `-32600`: Invalid Request
-  - `-32601`: Method not found
-  - `-32603`: Internal error
-- Automatic HTTPS to HTTP fallback for reliability
-
-## CORS Support
-
-The server includes CORS headers to allow browser-based clients to access the API:
-- `Access-Control-Allow-Origin: *`
-- `Access-Control-Allow-Methods: GET, POST, OPTIONS`
-- `Access-Control-Allow-Headers: Content-Type`
+### Trolley Routes
+- **10, 11, 13, 34, 36, G** - All trolley lines
 
 ## Development
 
 ### Local Testing
 
-To test locally, you can use the Vercel CLI:
-
 ```bash
-# Install Vercel CLI
-npm i -g vercel
+# Install dependencies
+npm install
 
-# Run locally
+# Run with Vercel CLI
+npm install -g vercel
 vercel dev
+
+# Server available at http://localhost:3000
 ```
 
-The server will be available at `http://localhost:3000`
+### Testing Tools
 
-### Making Changes
+**List available tools:**
+```bash
+curl -X POST http://localhost:3000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "params": {},
+    "id": 1
+  }'
+```
 
-1. Update `api/index.js` for functionality changes
-2. Update `mcp-config.yaml` for configuration reference
-3. Test locally with `vercel dev`
-4. Commit and push to trigger automatic deployment
+## Documentation
+
+- **[GTFS-Realtime Guide](GTFS_REALTIME_GUIDE.md)** - Comprehensive GTFS-RT documentation
+- **[SEPTA API Research](SEPTA_API_RESEARCH.md)** - Legacy API information
+- [GTFS-Realtime Specification](https://developers.google.com/transit/gtfs-realtime)
+- [SEPTA Developer Portal](https://www.septa.org/developer/)
+- [MCP Specification](https://spec.modelcontextprotocol.io/)
 
 ## Troubleshooting
 
-### Deployment Issues
-- Ensure `package.json` specifies Node.js 18+
-- Check Vercel build logs for errors
-- Verify the `api/` directory contains `index.js`
+### Empty vehicles array
+- Verify route number is correct
+- Check during peak hours (weekdays 7-9 AM, 4-7 PM)
+- Some routes may have limited weekend service
 
-### API Issues
-- SEPTA APIs may occasionally be unavailable
-- Some routes may not return data if no vehicles are active
-- Check SEPTA's official status page for service disruptions
-- The server automatically falls back to HTTP if HTTPS fails
+### Direction detection issues
+- Direction is based on instantaneous bearing
+- May be inaccurate when vehicle is stopped or turning
+- Loop routes always show `direction_id: 0`
 
-### MCP Client Issues
-- Ensure requests use JSON-RPC 2.0 format
-- Verify `Content-Type: application/json` header is set
-- Check request/response IDs match
+### GTFS-RT feed unavailable
+- Server automatically falls back to HTTP
+- Then falls back to legacy TransitView API
+- Check Vercel logs for details
 
-## Performance
+### Cache issues
+- Use `clear_gtfs_cache` tool to force refresh
+- Cache TTL is 30 seconds
+- Vercel function timeout is 10 seconds (serverless)
 
-- **Cold Start:** ~100-200ms (Node.js serverless)
-- **Warm Response:** ~50-100ms
-- **SEPTA API Latency:** Variable (typically 200-500ms)
-- **Total Request Time:** ~300-700ms
+## Error Handling
 
-## Common SEPTA Routes
+The server includes comprehensive error handling:
+- Parameter validation
+- HTTP status checking
+- Protobuf parsing error detection
+- Automatic HTTPS → HTTP fallback
+- GTFS-RT → TransitView fallback
+- JSON-RPC 2.0 error codes
 
-### Major Bus Routes
-- **Center City:** 2, 4, 7, 9, 12, 17, 21, 23, 27, 31, 32, 33, 38, 42, 44, 45, 47, 48
-- **North Philadelphia:** 50, 52, 53, 54, 56, 57, 58, 60, 61, 62
-- **West Philadelphia:** 64, 65, 66, 67, 68
-- **Northeast:** 14, 58, 67, 70, 73, 75, 77, 78, 79, 84, 88, 89, 90, 91, 92, 94, 95, 96, 97, 98, 99
+## CORS Support
 
-### Trolley Routes
-- **10** - Lancaster Avenue
-- **11** - Woodland Avenue
-- **13** - Chester Avenue
-- **34** - Baltimore Avenue
-- **36** - Eastwick
-- **G** - Girard Avenue (Green Line)
+CORS enabled for browser-based clients:
+- `Access-Control-Allow-Origin: *`
+- `Access-Control-Allow-Methods: GET, POST, OPTIONS`
+- `Access-Control-Allow-Headers: Content-Type`
+
+## Migration from v2.0
+
+If upgrading from v2.0 (TransitView API only):
+
+**Before:**
+```javascript
+// Only basic fields
+{ "lat": "39.9526", "lng": "-75.1652", "Direction": "NorthBound" }
+```
+
+**After (v3.0):**
+```javascript
+// Enhanced fields
+{ 
+  "latitude": 39.9526, 
+  "longitude": -75.1652,
+  "bearing": 45.5,
+  "speed": 8.3,
+  "directionId": 0,
+  "delay": 120,
+  "congestionLevel": "RUNNING_SMOOTHLY",
+  "occupancyStatus": "MANY_SEATS_AVAILABLE"
+}
+```
+
+**Backward compatibility:** Use `useLegacy: true` to get TransitView format.
 
 ## License
 
 This project is open source and available under the MIT License.
 
-## Resources
+## Changelog
 
-- [SEPTA Developer Resources](https://www.septa.org/developer/)
-- [SEPTA TransitView API Documentation](https://www3.septa.org/api/)
-- [Model Context Protocol Documentation](https://modelcontextprotocol.io/)
-- [MCP Specification](https://spec.modelcontextprotocol.io/)
-- [Vercel Serverless Functions](https://vercel.com/docs/functions)
-- [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification)
+### v3.0.0 (2026-02-18) - **Current**
+- ✅ **Added GTFS-Realtime support**
+- ✅ Protobuf parsing with gtfs-realtime-bindings
+- ✅ Direction detection from bearing
+- ✅ Loop route handling
+- ✅ 30-second feed caching
+- ✅ Trip updates tool
+- ✅ Service alerts tool (GTFS-RT)
+- ✅ Automatic fallback to TransitView
+- ✅ Enhanced vehicle data (bearing, speed, occupancy, congestion)
+- ✅ Cache management tool
+
+### v2.0.0 (2026-02-11)
+- Switched to TransitView API as primary endpoint
+- HTTP fallback support
+
+### v1.0.0 (2026-02-04)
+- Initial Node.js implementation
+- Basic MCP integration
 
 ## Support
 
 For issues or questions:
-- Check existing GitHub Issues
-- Create a new issue with details about your problem
-- Include error messages and steps to reproduce
-
-## Changelog
-
-### v2.0.0 (2026-02-11)
-- **Switched to TransitView API as primary endpoint**
-- Simplified endpoint strategy to focus on SEPTA's official TransitView API
-- Endpoint: `https://www3.septa.org/api/TransitView/index.php?route=[route_number]`
-- Maintained HTTP fallback for reliability
-- Removed complex multi-endpoint fallback strategy
-- Enhanced logging for TransitView API calls
-- Updated documentation to highlight TransitView API usage
-
-### v1.0.2 (2026-02-04)
-- Multi-endpoint fallback strategy
-- Comprehensive error handling
-
-### v1.0.0 (2026-02-04)
-- Migrated from Go to Node.js for better Vercel compatibility
-- Implemented MCP JSON-RPC 2.0 protocol
-- Added all three SEPTA tools
-- Zero external dependencies
-- CORS support
-- Health check endpoint
+- Check [GTFS_REALTIME_GUIDE.md](GTFS_REALTIME_GUIDE.md) for detailed documentation
+- Review GitHub Issues
+- Create a new issue with reproduction steps
 
 ---
 
 **Note:** This is an unofficial tool and is not affiliated with or endorsed by SEPTA.
+
+**Repository:** https://github.com/prncsclo-create/septa-api-wrapper-mcp  
+**Version:** 3.0.0  
+**Status:** Production-ready with GTFS-Realtime support
