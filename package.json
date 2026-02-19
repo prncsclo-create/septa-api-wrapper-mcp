@@ -1,7 +1,7 @@
 {
   "name": "septa-api-wrapper-mcp",
-  "version": "3.0.0",
-  "description": "Model Context Protocol (MCP) server providing real-time SEPTA transit data with GTFS-Realtime support",
+  "version": "4.0.0",
+  "description": "Model Context Protocol (MCP) server providing real-time SEPTA transit data using TransitView JSON API",
   "main": "api/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -14,8 +14,8 @@
     "philadelphia",
     "bus",
     "trolley",
-    "gtfs",
-    "gtfs-realtime",
+    "transitview",
+    "json-api",
     "real-time"
   ],
   "author": "Chloe Smith",
